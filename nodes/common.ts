@@ -49,8 +49,7 @@ export function natsConnectionOptions(credentials: ICredentialDataDecryptedObjec
 			authenticators.push(credsAuthenticator(new TextEncoder().encode(creds as string)))
 		  break
 		case 'tls':
-			options.tls = { ca: tlsCa }
-			options.tls.cert = { ...options.tls, cert: tlsCert, key: tlsKey }
+			options.tls = { ca: tlsCa, cert: tlsCert, key: tlsKey }
 		  break
 	}
 

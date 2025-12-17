@@ -44,7 +44,8 @@ export class NatsApi implements ICredentialType {
 			default: undefined,
 			placeholder: 'PEM ca',
 			description: 'TLS Certificate Authority',
-      typeOptions: {
+      		typeOptions: {
+				rows: 4,
 				alwaysOpenEditWindow: true
 			},
 			displayOptions: {
@@ -109,7 +110,8 @@ export class NatsApi implements ICredentialType {
 			placeholder: 'PEM Cert',
 			description: 'TLS Certificate',
 			typeOptions: {
-				alwaysOpenEditWindow: true
+				alwaysOpenEditWindow: true,
+				rows: 4,
 			},
 			displayOptions: {
 				show: {
@@ -123,7 +125,7 @@ export class NatsApi implements ICredentialType {
 			type: 'string',
 			typeOptions: {
 				alwaysOpenEditWindow: true,
-				password: true
+				rows: 4,
 			},
 			default: undefined,
 			placeholder: 'PEM key',
