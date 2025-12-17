@@ -184,7 +184,7 @@ export class JetStreamTrigger implements INodeType {
 					if (acknowledgeMode === 'executionFinishes' || acknowledgeMode === 'executionFinishesSuccessfully') {
 						const responsePromise = await this.helpers.createDeferredPromise<IRun>();
 						this.emit([this.helpers.returnJsonArray([item])], undefined, responsePromise);
-						const data = await responsePromise.promise();
+						const data = await responsePromise.promise;
 						if ((!data.data.resultData.error && acknowledgeMode === 'executionFinishesSuccessfully') || acknowledgeMode === 'executionFinishes') {
 							await message.ackAck();
 						} else if (data.data.resultData.error && acknowledgeMode === 'executionFinishesSuccessfully') {
@@ -194,7 +194,7 @@ export class JetStreamTrigger implements INodeType {
 					} else if (acknowledgeMode === 'laterMessageNode') {
 						const responsePromiseHook = await this.helpers.createDeferredPromise<IExecuteResponsePromiseData>();
 						this.emit([this.helpers.returnJsonArray([item])], responsePromiseHook);
-						await responsePromiseHook.promise();
+						await responsePromiseHook.promise;
 						await message.ackAck();
 					} else {
 						this.emit([this.helpers.returnJsonArray([item])]);

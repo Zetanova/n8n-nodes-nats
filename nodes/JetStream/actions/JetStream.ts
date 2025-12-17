@@ -1,5 +1,6 @@
 import { IDataObject, IExecuteFunctions, INodeExecutionData } from "n8n-workflow";
-import { JetStreamClient, headers } from "nats";
+import { headers } from "@nats-io/nats-core";
+import { JetStreamClient } from "@nats-io/jetstream";
 
 export async function publish(func: IExecuteFunctions, connection: JetStreamClient, idx: number, returnData: INodeExecutionData[]): Promise<any> {
 	const head = headers()

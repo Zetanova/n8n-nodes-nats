@@ -1,5 +1,6 @@
 import { ICredentialDataDecryptedObject, ICredentialTestFunctions, ICredentialsDecrypted, INodeCredentialTestResult } from "n8n-workflow";
-import { Authenticator, ConnectionOptions, connect, credsAuthenticator, jwtAuthenticator, nkeyAuthenticator, tokenAuthenticator, usernamePasswordAuthenticator } from "nats";
+import { connect } from "@nats-io/transport-node";
+import { credsAuthenticator, jwtAuthenticator, nkeyAuthenticator, tokenAuthenticator, usernamePasswordAuthenticator, type Authenticator, type ConnectionOptions } from "@nats-io/nats-core";
 
 export function natsConnectionOptions(credentials: ICredentialDataDecryptedObject): ConnectionOptions {
 	let { authType, tlsEnabled, user, pass, token, seed, jwtSeed, jwt, creds, tlsCa, tlsCert, tlsKey, ...options } = credentials

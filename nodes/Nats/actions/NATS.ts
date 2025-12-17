@@ -1,5 +1,5 @@
+import { headers, MsgHdrs, NatsConnection, Payload, RequestManyOptions, RequestOptions } from "@nats-io/nats-core";
 import { FunctionsBase, IDataObject, IExecuteFunctions, INodeExecutionData, ITriggerFunctions, NodeOperationError } from "n8n-workflow";
-import { MsgHdrs, NatsConnection, Payload, RequestManyOptions, RequestOptions, ServiceError, ServiceErrorCodeHeader, ServiceErrorHeader, headers } from "nats";
 
 export async function publish(func: IExecuteFunctions, connection: NatsConnection, idx: number, returnData: INodeExecutionData[]): Promise<any> {
 	const head = headers()
@@ -144,30 +144,12 @@ export async function createNatsNodeMessage(func:NodeMessageFunctions, msg:INats
 		item.json.data = msg.string()
 	}
 
-	let serviceError:ServiceError|null = null
-
 	//copy header values
 	const headers:NatsNodeHeaders = {}
 	if(msg.headers) {
-		let errorCode:number = 0
-		let errorReason:string = ""
-
 		for(var[key,values] of msg.headers) {
-			switch(key) {
-				case ServiceErrorCodeHeader:
-					errorCode = Number.parseInt(values.at(-1) ?? '')
-					break
-				case ServiceErrorHeader:
-					errorReason = values.join('\n')
-					break
-				default:
-					headers[key] = values.length == 1 ? values.at(0) : values
-					break
-			}
+			headers[key] = values.length == 1 ? values.at(0) : values
 		}
-
-		if(errorCode !== 0)
-			serviceError = new ServiceError(errorCode, errorReason)
 	}
 
 	if (!options.onlyContent) {
@@ -180,14 +162,14 @@ export async function createNatsNodeMessage(func:NodeMessageFunctions, msg:INats
 		item.json.headers = headers
 	}
 
-	if(serviceError) {
+	if(msg.headers?.hasError) {
 		const node = func.getNode()
 
-		const error = new NodeOperationError(node, serviceError,
+		const error = new NodeOperationError(node, new Error(msg.headers.status),
 			{
 				itemIndex: idx,
-				message: `Error ${serviceError.code}`,
-				description: serviceError.message
+				message: `Error ${msg.headers.code}`,
+				description: msg.headers.description
 			})
 
 		if(!node.continueOnFail)

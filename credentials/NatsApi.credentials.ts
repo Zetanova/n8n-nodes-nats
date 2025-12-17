@@ -1,6 +1,6 @@
+import { defaultJsOptions } from '@nats-io/jetstream/lib/jsbaseclient_api';
+import { defaultOptions } from '@nats-io/nats-core/lib/options';
 import type { ICredentialType, INodeProperties } from 'n8n-workflow';
-import { defaultJsOptions } from 'nats/lib/jetstream/jsbaseclient_api';
-import { defaultOptions } from 'nats/lib/nats-base-client/options';
 
 const DefaultOptions = defaultOptions()
 const DefaultJsOptions = defaultJsOptions()

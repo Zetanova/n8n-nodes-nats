@@ -1,8 +1,10 @@
 import { IAllExecuteFunctions, ICredentialDataDecryptedObject } from 'n8n-workflow';
 import { Service } from 'typedi';
 import { natsConnectionOptions } from './common';
-import { JetStreamOptions, NatsConnection, connect } from 'nats';
-import { defaultJsOptions } from 'nats/lib/jetstream/jsbaseclient_api';
+import { connect } from "@nats-io/transport-node";
+import { NatsConnection } from '@nats-io/nats-core';
+import { jetstream, JetStreamOptions } from '@nats-io/jetstream';
+import { defaultJsOptions } from '@nats-io/jetstream/lib/jsbaseclient_api';
 
 type ConnectionEntry = {
 	id: string,
@@ -29,7 +31,7 @@ export class NatsService {
 		if (!entry) {
 			return { exists: false }
 		}
-		
+
 		return {
 			exists: true,
 			id: entry.id,
@@ -44,7 +46,7 @@ export class NatsService {
 
 		//todo acquire n8n credentials id
 		//hack use the connection name as the id
-		credentials ??= await func.getCredentials('natsApi', 0)
+		credentials ??= await func.getCredentials<ICredentialDataDecryptedObject>('natsApi', 0)
 		const options = natsConnectionOptions(credentials)
 		let cid = options.name ? options.name : func.getExecutionId()
 
@@ -58,7 +60,7 @@ export class NatsService {
 
 		if (!entry) {
 			const connection = await connect(options)
-			
+
 			// Add connection event listeners for better reconnection handling
 			connection.closed().then(() => {
 				// Connection has been permanently closed, remove from cache
@@ -67,7 +69,7 @@ export class NatsService {
 				// Error in connection, remove from cache
 				this.connections.delete(cid)
 			})
-			
+
 			entry = {
 				id: `${cid}-${this.counter++}`, //entry Id
 				connection: connection,
@@ -104,7 +106,7 @@ export class NatsService {
 
 		const nats = await this.getConnection(func, credentials);
 
-		const js = nats.connection.jetstream(defaultJsOptions(jsOptions));
+		const js = jetstream(nats.connection, defaultJsOptions(jsOptions));
 
 		return {
 			connection: nats.connection,
