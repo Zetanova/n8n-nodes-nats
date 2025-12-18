@@ -4,7 +4,6 @@ import { natsConnectionOptions } from './common';
 import { connect } from "@nats-io/transport-node";
 import { NatsConnection } from '@nats-io/nats-core';
 import { jetstream, JetStreamOptions } from '@nats-io/jetstream';
-import { defaultJsOptions } from '@nats-io/jetstream/lib/jsbaseclient_api';
 
 type ConnectionEntry = {
 	id: string,
@@ -106,7 +105,7 @@ export class NatsService {
 
 		const nats = await this.getConnection(func, credentials);
 
-		const js = jetstream(nats.connection, defaultJsOptions(jsOptions));
+		const js = jetstream(nats.connection, jsOptions);
 
 		return {
 			connection: nats.connection,
