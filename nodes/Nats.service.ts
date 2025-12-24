@@ -4,29 +4,36 @@ import { natsConnectionOptions } from './common';
 import { connect } from "@nats-io/transport-node";
 import { NatsConnection } from '@nats-io/nats-core';
 import { jetstream, JetStreamOptions } from '@nats-io/jetstream';
+import { createHash } from 'crypto';
 
 type ConnectionEntry = {
 	id: string,
 	connection: NatsConnection,
 	refCount: number,
 	timer?: string | number | NodeJS.Timeout,
+	hash: string
 }
 
 const idleTimeout = 180_000
 
+// const ncPool = {
+// 	connections: new Map<string, ConnectionEntry>(),
+// }
+
 @Service({ global: true })
 export class NatsService {
 
-	private connections = new Map<string, ConnectionEntry>()
-	private registry = new FinalizationRegistry(this.releaseConnection)
-	private counter = 0;
+	private static connections = new Map<string, ConnectionEntry>()
+	private static registry = new FinalizationRegistry(NatsService.releaseConnection)
+	private static counter = 0;
 
 	constructor() {
+
 	}
 
 	// Debug method to check connection status
 	getConnectionStatus(connectionId: string) {
-		const entry = this.connections.get(connectionId)
+		const entry = NatsService.connections.get(connectionId)
 		if (!entry) {
 			return { exists: false }
 		}
@@ -41,19 +48,42 @@ export class NatsService {
 		}
 	}
 
-	async getConnection(func: IAllExecuteFunctions, credentials?: ICredentialDataDecryptedObject): Promise<NatsConnectionHandle> {
+	async getConnection(func: IAllExecuteFunctions, credentials?: { id:string, values:ICredentialDataDecryptedObject }): Promise<NatsConnectionHandle> {
 
-		//todo acquire n8n credentials id
-		//hack use the connection name as the id
-		credentials ??= await func.getCredentials<ICredentialDataDecryptedObject>('natsApi', 0)
-		const options = natsConnectionOptions(credentials)
-		let cid = options.name ? options.name : func.getExecutionId()
+		if(!credentials) {
+			const values = await func.getCredentials<ICredentialDataDecryptedObject>('natsApi', 0)
+			const node = func.getNode()
+			const id = node?.credentials?.['natsApi']?.id ?? values?.name as string ?? func.getExecutionId()
+			credentials = { id, values }
+		}
 
-		let entry = this.connections.get(cid)
+		const options = natsConnectionOptions(credentials?.values)
+
+		const cid = credentials.id
+
+		//we hash the credential options and us it as the connection pool change detection
+		const credHash = createHash('sha256')
+			.update(
+				Object.entries(options)
+					.filter(([, v]) => v !== undefined && v !== '')
+					.sort(([a], [b]) => a.localeCompare(b))
+					.map(([k, v]) => `${k}=${v}`)
+					.join('|'),
+			)
+			.digest('hex')
+
+		let entry = NatsService.connections.get(cid)
+
+		if(entry && entry.hash != credHash) {
+			//the credentials changed and we need to reconnect
+			NatsService.connections.delete(cid)
+			entry.connection.close()
+			entry = undefined
+		}
 
 		if(entry && entry.connection.isClosed()) {
 			// Remove the closed connection from cache and create a new one
-			this.connections.delete(cid)
+			NatsService.connections.delete(cid)
 			entry = undefined
 		}
 
@@ -63,18 +93,21 @@ export class NatsService {
 			// Add connection event listeners for better reconnection handling
 			connection.closed().then(() => {
 				// Connection has been permanently closed, remove from cache
-				this.connections.delete(cid)
+				NatsService.connections.delete(cid)
 			}).catch(() => {
 				// Error in connection, remove from cache
-				this.connections.delete(cid)
+				NatsService.connections.delete(cid)
 			})
 
 			entry = {
-				id: `${cid}-${this.counter++}`, //entry Id
+				id: `${cid}-${NatsService.counter++}`, //entry Id
 				connection: connection,
 				refCount: 1,
+				hash: credHash
 			}
-			this.connections.set(cid, entry)
+			NatsService.connections.set(cid, entry)
+
+			//console.debug("nats connected: ", entry.connection.info?.client_id)
 		} else if (entry.refCount++ == 0 && entry.timer) {
 			clearTimeout(entry.timer)
 			entry.timer = undefined
@@ -82,7 +115,7 @@ export class NatsService {
 
 		const token = { id: entry.id }
 		const handle = new NatsConnectionHandle(this, entry.connection, token)
-		this.registry.register(handle, token.id, token)
+		NatsService.registry.register(handle, token.id, token)
 
 		return handle
 	}
@@ -91,37 +124,41 @@ export class NatsService {
 
 		const credentials = await func.getCredentials('natsApi', 0)
 
+		const node = func.getNode()
+		const credentialId = node?.credentials?.['natsApi']?.id ?? credentials.name as string ?? func.getExecutionId()
+
+		//normalize options
+		//nats options expect undefined to use default
+		const normaizedOptions = Object.fromEntries(Object.entries(credentials)
+			.map(([key, value]) => [key, value === '' ? undefined : value])
+		)
+
 		const jsOptions: JetStreamOptions = {
-			apiPrefix: credentials['jsApiPrefix'] as string,
-			timeout: credentials['jsTimeout'] as number,
-			domain: credentials['jsDomain'] as string
-		}
-		if (jsOptions.apiPrefix === '') {
-			jsOptions.apiPrefix = undefined
-		}
-		if (jsOptions.domain === '') {
-			jsOptions.domain = undefined
+			apiPrefix: normaizedOptions['jsApiPrefix'] as string ?? '$JS.API', //undefined does not work
+			timeout: normaizedOptions['jsTimeout'] as number,
+			domain: normaizedOptions['jsDomain'] as string,
+			watcherPrefix: normaizedOptions['jsWatcherPrefix'] as string,
 		}
 
-		const nats = await this.getConnection(func, credentials);
+		const ncHandle = await this.getConnection(func, { id: credentialId, values: credentials});
 
-		const js = jetstream(nats.connection, jsOptions);
+		const js = jetstream(ncHandle.connection, jsOptions);
 
 		return {
-			connection: nats.connection,
+			connection: ncHandle.connection,
 			js: js,
-			[Symbol.dispose]() { nats[Symbol.dispose]() }
+			[Symbol.dispose]() { ncHandle[Symbol.dispose]() }
 		}
 	}
 
 	release(token: Partial<{ id: string }>) {
-		this.registry.unregister(token)
+		NatsService.registry.unregister(token)
 		if (token.id) {
-			this.releaseConnection(token.id)
+			NatsService.releaseConnection(token.id)
 		}
 	}
 
-	private releaseConnection(entryId: string) {
+	private static releaseConnection(entryId: string) {
 		const i = entryId.lastIndexOf('-');
 		const cid = entryId.substring(0, i)
 

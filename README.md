@@ -8,7 +8,7 @@ nodes to communicate with the message broker [nats](nats.io).
 
 Common:
 - Header support
-- Shared tcp connection in each workflow instance
+- Shared tcp connection in each n8n worker instance
 - Payload in text,json or binary format
 
 NATS credentials:

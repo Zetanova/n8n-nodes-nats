@@ -54,7 +54,13 @@ export function natsConnectionOptions(credentials: ICredentialDataDecryptedObjec
 		  break
 	}
 
-	return { ...options, authenticator: authenticators }
+	//normalize options
+	//nats options expect undefined to use default
+	const normaizedOptions = Object.fromEntries(Object.entries(options)
+		.map(([key, value]) => [key, value === '' ? undefined : value, ])
+	)
+
+	return { ...normaizedOptions, authenticator: authenticators }
 }
 
 export async function natsCredTest(this: ICredentialTestFunctions, credential: ICredentialsDecrypted): Promise<INodeCredentialTestResult> {

@@ -177,37 +177,63 @@ export class JetStreamTrigger implements INodeType {
 					await message.ackAck()
 				}
 				try {
-
 					this.helpers
 					const item = await createNatsNodeMessage(this, message, undefined, options)
 
 					if (acknowledgeMode === 'executionFinishes' || acknowledgeMode === 'executionFinishesSuccessfully') {
-						const responsePromise = await this.helpers.createDeferredPromise<IRun>();
-						this.emit([this.helpers.returnJsonArray([item])], undefined, responsePromise);
-						const data = await responsePromise.promise;
-						if ((!data.data.resultData.error && acknowledgeMode === 'executionFinishesSuccessfully') || acknowledgeMode === 'executionFinishes') {
-							await message.ackAck();
-						} else if (data.data.resultData.error && acknowledgeMode === 'executionFinishesSuccessfully') {
-							message.nak();
-							this.emitError(data.data.resultData.error);
-						}
+
+						const responsePromise = await this.helpers.createDeferredPromise<IRun>()
+						this.emit([this.helpers.returnJsonArray([item])], undefined, responsePromise)
+
+						//we need to ack or nck the message
+						responsePromise.promise
+							.then(async run => {
+								try {
+									if (!run.data.resultData.error || acknowledgeMode === 'executionFinishes') {
+										await message.ackAck();
+									} else {
+										message.nak()
+									}
+								} catch(ackError) {
+									//maybe not proper handling
+									this.emit([this.helpers.returnJsonArray({
+										error: new NodeOperationError(this.getNode(), ackError, { itemIndex: 0 })
+									})])
+								}
+							})
+
 					} else if (acknowledgeMode === 'laterMessageNode') {
-						const responsePromiseHook = await this.helpers.createDeferredPromise<IExecuteResponsePromiseData>();
-						this.emit([this.helpers.returnJsonArray([item])], responsePromiseHook);
-						await responsePromiseHook.promise;
-						await message.ackAck();
+						const responsePromiseHook = await this.helpers.createDeferredPromise<IExecuteResponsePromiseData>()
+						this.emit([this.helpers.returnJsonArray([item])], responsePromiseHook)
+						responsePromiseHook.promise
+							.then(async data => {
+									//todo use data for nck detection
+									try {
+										await message.ackAck();
+									} catch(ackError) {
+										//maybe not proper handling
+										this.emit([this.helpers.returnJsonArray({
+											error: new NodeOperationError(this.getNode(), ackError, { itemIndex: 0 })
+										})])
+									}
+							})
 					} else {
 						this.emit([this.helpers.returnJsonArray([item])]);
 					}
-				} catch (error) {
+				} catch (msgErr) {
 					if (acknowledgeMode !== 'immediately') {
 						message.nak()
 					}
-					this.emitError(error)
+					// NON-terminal: message parse failed
+					this.emit([this.helpers.returnJsonArray({
+						error: new NodeOperationError(this.getNode(), msgErr, { itemIndex: 0 })
+					})])
 				}
 			}
 		}
-		consume();
+
+		// terminal errors
+		consume().catch((err) => this.emitError(err))
 
 		const closeFunction = async () => {
 			await messages.close(); //todo error handling
