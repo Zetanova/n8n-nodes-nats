@@ -28,11 +28,12 @@ export class NatsService {
 	private static counter = 0;
 
 	constructor() {
-
+		//console.debug('nats service created')
 	}
 
 	// Debug method to check connection status
 	getConnectionStatus(connectionId: string) {
+
 		const entry = NatsService.connections.get(connectionId)
 		if (!entry) {
 			return { exists: false }
@@ -128,17 +129,21 @@ export class NatsService {
 		const credentialId = node?.credentials?.['natsApi']?.id ?? credentials.name as string ?? func.getExecutionId()
 
 		//normalize options
-		//nats options expect undefined to use default
-		const normaizedOptions = Object.fromEntries(Object.entries(credentials)
+		//nats options expect not present properties to use default
+		const normalizedOptions = Object.fromEntries(Object.entries(credentials)
 			.map(([key, value]) => [key, value === '' ? undefined : value])
+			.filter(([_, v]) => v !== undefined)
 		)
 
-		const jsOptions: JetStreamOptions = {
-			apiPrefix: normaizedOptions['jsApiPrefix'] as string ?? '$JS.API', //undefined does not work
-			timeout: normaizedOptions['jsTimeout'] as number,
-			domain: normaizedOptions['jsDomain'] as string,
-			watcherPrefix: normaizedOptions['jsWatcherPrefix'] as string,
-		}
+		const jsOptions: JetStreamOptions = Object.fromEntries(
+			Object.entries({
+				apiPrefix: normalizedOptions.jsApiPrefix,
+				timeout: normalizedOptions.jsTimeout,
+				domain: normalizedOptions.jsDomain,
+				watcherPrefix: normalizedOptions.jsWatcherPrefix,
+			})
+			.filter(([_, value]) => value !== undefined)
+		)
 
 		const ncHandle = await this.getConnection(func, { id: credentialId, values: credentials});
 
@@ -162,13 +167,15 @@ export class NatsService {
 		const i = entryId.lastIndexOf('-');
 		const cid = entryId.substring(0, i)
 
-		const entry = this.connections.get(cid)
+		const connections = NatsService.connections
+
+		const entry = connections.get(cid)
 		if(!entry || entry.id != entryId) {
 			return
 		}
 
 		if(entry.connection.isClosed()) {
-			this.connections.delete(cid)
+			connections.delete(cid)
 			return
 		}
 
@@ -181,7 +188,7 @@ export class NatsService {
 					}
 					entry.connection.drain()
 				}
-			}, idleTimeout, this.connections, cid, entry);
+			}, idleTimeout, connections, cid, entry);
 		}
 	}
 }
