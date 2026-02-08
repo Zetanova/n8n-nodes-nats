@@ -170,6 +170,8 @@ export class JetStreamTrigger implements INodeType {
 		const jsConsumer = await nats.js.consumers.get(stream, consumer);
 		const messages = await jsConsumer.consume({ max_messages: parallelMessages });
 
+		let closing = false;
+
 		const consume = async () => {
 			for await (const message of messages) {
 				message.working()
@@ -232,11 +234,25 @@ export class JetStreamTrigger implements INodeType {
 			}
 		}
 
-		// terminal errors
-		consume().catch((err) => this.emitError(err))
+		// signal n8n on unexpected termination so it can reactivate the workflow
+		consume().then(
+			() => {
+				if (!closing) {
+					nats[Symbol.dispose]()
+					this.emitError(new Error('JetStream consumer closed unexpectedly'))
+				}
+			},
+			(err) => {
+				if (!closing) {
+					nats[Symbol.dispose]()
+					this.emitError(err)
+				}
+			}
+		)
 
 		const closeFunction = async () => {
-			await messages.close(); //todo error handling
+			closing = true;
+			await messages.close();
 			nats[Symbol.dispose]()
 		};
 
