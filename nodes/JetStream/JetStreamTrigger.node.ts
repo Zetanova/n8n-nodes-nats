@@ -1,9 +1,7 @@
 import {
 	IDataObject,
-	IExecuteResponsePromiseData,
 	INodeType,
 	INodeTypeDescription,
-	IRun,
 	ITriggerFunctions,
 	ITriggerResponse,
 	NodeOperationError,
@@ -11,7 +9,8 @@ import {
 
 import Container from 'typedi';
 import { NatsService } from '../Nats.service';
-import { createNatsNodeMessage, NatsNodeMessageOptions } from '../Nats/actions/NATS';
+import { NatsNodeMessageOptions } from '../Nats/actions/message';
+import { consumeMessages } from './actions/consumer';
 
 export class JetStreamTrigger implements INodeType {
 	description: INodeTypeDescription = {
@@ -34,7 +33,7 @@ export class JetStreamTrigger implements INodeType {
 					"<b>While building your workflow</b>, click the 'listen' button, then trigger a JetStream stream message. This will trigger an execution, which will show up in this editor.<br /> <br /><b>Your workflow will also execute automatically</b>, since it's activated. Every time a change is detected, this node will trigger an execution. These executions will show up in the <a data-key='executions'>executions list</a>, but not in the editor.",
 			},
 			activationHint:
-				"Once you’ve finished building your workflow, <a data-key='activate'>activate</a> it to have it also listen continuously (you just won’t see those executions here).",
+				"Once you've finished building your workflow, <a data-key='activate'>activate</a> it to have it also listen continuously (you just won't see those executions here).",
 		},
 		inputs: [],
 		outputs: ['main'],
@@ -172,67 +171,11 @@ export class JetStreamTrigger implements INodeType {
 
 		let closing = false;
 
-		const consume = async () => {
-			for await (const message of messages) {
-				message.working()
-				if (acknowledgeMode === 'immediately') {
-					await message.ackAck()
-				}
-				try {
-					this.helpers
-					const item = await createNatsNodeMessage(this, message, undefined, options)
-
-					if (acknowledgeMode === 'executionFinishes' || acknowledgeMode === 'executionFinishesSuccessfully') {
-
-						const responsePromise = await this.helpers.createDeferredPromise<IRun>()
-						this.emit([this.helpers.returnJsonArray([item])], undefined, responsePromise)
-
-						//we need to ack or nck the message
-						responsePromise.promise
-							.then(async run => {
-								try {
-									if (!run.data.resultData.error || acknowledgeMode === 'executionFinishes') {
-										await message.ackAck();
-									} else {
-										message.nak()
-									}
-								} catch(ackError) {
-									//maybe not proper handling
-									this.emit([this.helpers.returnJsonArray({
-										error: new NodeOperationError(this.getNode(), ackError, { itemIndex: 0 })
-									})])
-								}
-							})
-
-					} else if (acknowledgeMode === 'laterMessageNode') {
-						const responsePromiseHook = await this.helpers.createDeferredPromise<IExecuteResponsePromiseData>()
-						this.emit([this.helpers.returnJsonArray([item])], responsePromiseHook)
-						responsePromiseHook.promise
-							.then(async data => {
-									//todo use data for nck detection
-									try {
-										await message.ackAck();
-									} catch(ackError) {
-										//maybe not proper handling
-										this.emit([this.helpers.returnJsonArray({
-											error: new NodeOperationError(this.getNode(), ackError, { itemIndex: 0 })
-										})])
-									}
-							})
-					} else {
-						this.emit([this.helpers.returnJsonArray([item])]);
-					}
-				} catch (msgErr) {
-					if (acknowledgeMode !== 'immediately') {
-						message.nak()
-					}
-					// NON-terminal: message parse failed
-					this.emit([this.helpers.returnJsonArray({
-						error: new NodeOperationError(this.getNode(), msgErr, { itemIndex: 0 })
-					})])
-				}
-			}
-		}
+		const consume = () => consumeMessages(
+			{ emit: this.emit.bind(this), emitError: this.emitError.bind(this), helpers: this.helpers, getNode: this.getNode.bind(this) },
+			messages,
+			{ ...options, acknowledge: acknowledgeMode as string },
+		);
 
 		// signal n8n on unexpected termination so it can reactivate the workflow
 		consume().then(
@@ -249,6 +192,39 @@ export class JetStreamTrigger implements INodeType {
 				}
 			}
 		)
+
+		// Monitor connection health — force-close consumer if connection dies
+		nats.connection.closed().then(() => {
+			if (!closing) {
+				messages.close().catch(() => {});
+			}
+		}).catch((err) => {
+			if (!closing) {
+				this.emitError(err instanceof Error ? err : new Error(String(err)));
+			}
+		});
+
+		// Monitor consumer status for critical events
+		(async () => {
+			try {
+				for await (const status of messages.status()) {
+					if (closing) break;
+					if (status.type === 'heartbeats_missed' ||
+						status.type === 'consumer_not_found' ||
+						status.type === 'stream_not_found' ||
+						status.type === 'consumer_deleted') {
+						if (!closing) {
+							await messages.close().catch(() => {});
+						}
+						break;
+					}
+				}
+			} catch {
+				if (!closing) {
+					messages.close().catch(() => {});
+				}
+			}
+		})();
 
 		const closeFunction = async () => {
 			closing = true;

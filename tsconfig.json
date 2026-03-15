@@ -1,6 +1,7 @@
 {
 	"compilerOptions": {
 		"strict": true,
+		"experimentalDecorators": true,
 		"module": "commonjs",
 		"moduleResolution": "node",
 		"target": "es2019",
@@ -26,5 +27,9 @@
 		"nodes/**/*",
 		"nodes/**/*.json",
 		"package.json",
+	],
+	"exclude": [
+		"nodes/**/*.test.ts",
+		"nodes/**/__tests__/**"
 	],
 }
