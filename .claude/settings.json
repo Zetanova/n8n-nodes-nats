@@ -1,0 +1,8 @@
+{
+  "plugins": {
+    "tsgo-lsp@local": true
+  },
+  "enabledPlugins": {
+    "tsgo-lsp@local": true
+  }
+}
