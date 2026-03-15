@@ -34,4 +34,4 @@ Domain-specific notes from team tasks.
 | File | Issue | Action |
 |------|-------|--------|
 | `.claude/rules/best-practices.md` | missing | Create with n8n community node conventions |
-| `docs/n8n-testing.md` | missing | Create n8n node testing guide (user requested via /docs-manager) |
+| `~/.claude/docs/n8n-testing.md` | created | n8n testing guide moved to user docs |

@@ -40,6 +40,7 @@ module.exports = {
 		},
 		{
 			files: ['./nodes/**/*.ts'],
+			excludedFiles: ['**/*.test.ts', '**/*.spec.ts', '**/__tests__/**'],
 			plugins: ['eslint-plugin-n8n-nodes-base'],
 			extends: ['plugin:n8n-nodes-base/nodes'],
 			rules: {

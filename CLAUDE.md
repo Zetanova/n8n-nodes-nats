@@ -1,3 +1,7 @@
+---
+last-refined: 2026-03-15
+---
+
 # CLAUDE.md
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
@@ -54,3 +58,9 @@ Each node follows: `descriptions/` (UI property definitions) + `actions/` (opera
 ## Release
 
 GitHub Actions (`.github/workflows/release.yml`) triggers on `v*.*.*` tags (excludes pre-release). Publishes to both npm and GitHub Packages.
+
+## References
+
+- [Best practices](.claude/rules/best-practices.md) — n8n community node conventions, linting, publishing
+- [Testing conventions](.claude/rules/testing.md) — vitest setup, mock patterns, test structure
+- [n8n testing guide](~/.claude/docs/n8n-testing.md) — unit/e2e testing patterns for n8n community nodes
